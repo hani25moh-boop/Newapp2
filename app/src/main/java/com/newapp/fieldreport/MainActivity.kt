@@ -34,7 +34,20 @@ class MainActivity:ComponentActivity(){override fun onCreate(b:Bundle?){super.on
  Scaffold(topBar={TopAppBar(title={Text(role?.let{"Field Report — $it"}?:"Field Report")},navigationIcon={if(role!=null)TextButton(onClick={role=null}){Text("رجوع")}})},bottomBar={if(role!=null)NavigationBar{NavigationBarItem(selected=true,onClick={role=null},icon={},label={Text("الأدوار")});NavigationBarItem(selected=false,onClick={showImport=true},icon={},label={Text("استيراد")});NavigationBarItem(selected=false,onClick={scope.launch{vm.buildExport()?.let{shareFile(ctx,it)} }},icon={},label={Text("تصدير")})}}){pad->Box(Modifier.padding(pad).fillMaxSize()){if(role==null)RolePicker{role=it}else RoleHome(role!!,vm)}}
  if(showImport){showImport=false;LaunchedEffect(Unit){picker.launch(arrayOf("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet","application/vnd.ms-excel"))}}
 }
-@Composable fun RolePicker(onSelect:(String)->Unit){LazyColumn(Modifier.fillMaxSize().padding(16.dp),verticalArrangement=Arrangement.spacedBy(12.dp)){item{Text("اختر واجهة العمل",style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.Bold);Text("كل مستخدم يرى النماذج التي تخص عمله فقط.")};items(roles){r->Card(onClick={onSelect(r)}, modifier=Modifier.fillMaxWidth()){Row(Modifier.padding(18.dp),verticalAlignment=Alignment.CenterVertically){Column(Modifier.weight(1f)){Text(r,fontWeight=FontWeight.Bold);Text(roleHint(r),style=MaterialTheme.typography.bodySmall)}Text("فتح")}}}}}
+@Composable
+fun RolePicker(onSelect:(String)->Unit){
+ LazyColumn(modifier=Modifier.fillMaxSize().padding(16.dp),verticalArrangement=Arrangement.spacedBy(12.dp)){
+  item { Text("اختر واجهة العمل",style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.Bold); Text("كل مستخدم يرى النماذج التي تخص عمله فقط.") }
+  items(roles){ r ->
+   Card(onClick={onSelect(r)}, modifier=Modifier.fillMaxWidth()) {
+    Row(modifier=Modifier.padding(18.dp),verticalAlignment=Alignment.CenterVertically) {
+     Column(modifier=Modifier.weight(1f)) { Text(text=r,fontWeight=FontWeight.Bold); Text(text=roleHint(r),style=MaterialTheme.typography.bodySmall) }
+     Text(text="فتح")
+    }
+   }
+  }
+ }
+}
 fun roleHint(r:String)=when(r){"المخازن"->"استلام وصرف وإرجاع وتالف المواد";"مدير الموقع"->"الكميات المنفذة وساعات العمل";"الجودة"->"بلاغات الجودة والملاحظات";"السلامة"->"بلاغات السلامة والإجراءات";"المشتريات"->"المواد والتوريد";else->"بيانات ومتابعة المشروع"}
 @Composable fun RoleHome(role:String,vm:MainViewModel){when(role){"المخازن"->MaterialForm(vm);"مدير الموقع","مهندس الكهرباء","مهندس الميكانيك"->QuantityForm(vm,role);else->GenericHome(role,vm)}}
 @Composable fun GenericHome(role:String,vm:MainViewModel){val p by vm.projects.collectAsState();val w by vm.workItems.collectAsState();Column(Modifier.fillMaxSize().padding(18.dp),verticalArrangement=Arrangement.spacedBy(12.dp)){Text("لوحة $role",style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.Bold);Text("المشاريع المستوردة: ${p.size}");Text("بنود الأعمال المتاحة: ${w.size}");Text("استخدم زر استيراد لتحميل ملف إدارة المشاريع ثم ابدأ بإدخال السجلات.")}}
