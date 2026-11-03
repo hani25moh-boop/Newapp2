@@ -1,35 +1,23 @@
-name: Build APK
-
+name: Build Field Report V2
 on:
   push:
-    branches: [main]
+    branches: [main, v2-template-driven-app]
   workflow_dispatch:
-
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Unpack project
-        run: |
-          mkdir -p src
-          unzip -q -o Newapp1-project.zip -d src
-
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: 17
-
+          java-version: '17'
       - uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: "8.9"
-
+          gradle-version: '8.9'
       - name: Build debug APK
-        working-directory: src
         run: gradle assembleDebug --no-daemon --stacktrace
-
       - uses: actions/upload-artifact@v4
         with:
-          name: Newapp1-debug-apk
-          path: src/app/build/outputs/apk/debug/*.apk
+          name: FieldReport-v2-debug-apk
+          path: app/build/outputs/apk/debug/*.apk
