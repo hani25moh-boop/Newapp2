@@ -1,0 +1,57 @@
+name: Patch and Build
+# Upload a file named patch-<anything>.zip to the repo root of branch v4-stabilize.
+# This workflow unpacks it into the project, commits the result, then builds the APK.
+on:
+  push:
+    branches: [v4-stabilize]
+    paths: ['patch-*.zip']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Apply patch zips (if any)
+        run: |
+          shopt -s nullglob
+          zips=(patch-*.zip)
+          if [ ${#zips[@]} -gt 0 ]; then
+            for z in "${zips[@]}"; do
+              echo "Applying $z"
+              unzip -o "$z" -d .
+              git rm -q --cached "$z"
+              rm -f "$z"
+            done
+            git config user.name "patch-bot"
+            git config user.email "patch-bot@users.noreply.github.com"
+            git add -A
+            git commit -m "Apply patch: ${zips[*]}" || true
+            git push
+          else
+            echo "No patch zip found - building current code."
+          fi
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Build APK
+        run: gradle assembleDebug --no-daemon --stacktrace
+
+      - name: Show signing certificate (must be identical on every build)
+        run: keytool -printcert -jarfile app/build/outputs/apk/debug/app-debug.apk | grep -E "SHA256|Owner"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FieldReport-v4-apk
+          path: app/build/outputs/apk/debug/*.apk
