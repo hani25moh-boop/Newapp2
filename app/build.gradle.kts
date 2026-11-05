@@ -12,13 +12,28 @@ android {
         applicationId = "com.newapp.fieldreport"
         minSdk = 26
         targetSdk = 34
-        versionCode = 3
-        versionName = "3.0"
+        versionCode = 5
+        versionName = "4.1"
+    }
+
+    // Fixed signing key: every build is signed with the SAME key,
+    // so a new APK installs over the old one without deleting data.
+    signingConfigs {
+        create("fixed") {
+            storeFile = file("fixed-debug.jks")
+            storePassword = "gNdY1ToQzxrqt71xxd8v"
+            keyAlias = "fieldreport"
+            keyPassword = "gNdY1ToQzxrqt71xxd8v"
+        }
     }
 
     buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("fixed")
+        }
         release {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("fixed")
         }
     }
 
