@@ -45,6 +45,9 @@ class MainViewModel(a: Application) : AndroidViewModel(a) {
 
     private val _settings = MutableStateFlow(loadSettings())
     val settings: StateFlow<Settings> = _settings
+    private val _lastExport = MutableStateFlow(prefs.getString("lastExportAt", "").orEmpty())
+    val lastExport: StateFlow<String> = _lastExport
+    fun clearMessage() { _message.value = "" }
 
     init {
         viewModelScope.launch(Dispatchers.IO) {
@@ -199,6 +202,11 @@ class MainViewModel(a: Application) : AndroidViewModel(a) {
         return LocalDate.of(1899, 12, 30).plusDays(days).atStartOfDay().plusSeconds(secs).format(fmt)
     }
 
+    private fun excelDay(s: String): String {
+        val d = s.toDoubleOrNull() ?: return s.take(10)
+        if (d < 20000) return s
+        return LocalDate.of(1899, 12, 30).plusDays(d.toLong()).toString()
+    }
     private fun rowToEntry(r: List<String>, roleOf: (String) -> String): Entry {
         fun c(n: Int) = r.getOrNull(n).orEmpty()
         val rawRole = c(1)
@@ -207,7 +215,7 @@ class MainViewModel(a: Application) : AndroidViewModel(a) {
             projectCode = c(3), itemCode = c(4), itemName = c(5), unit = c(6),
             quantity = r.getOrNull(7)?.toDoubleOrNull(), hours = r.getOrNull(8)?.toDoubleOrNull(),
             status = c(9), priority = c(10), personCode = c(11), personName = c(12),
-            eventAt = excelDate(c(13)), notes = c(14), personTitle = c(15), reportDate = c(16),
+            eventAt = excelDate(c(13)), notes = c(14), personTitle = c(15), reportDate = excelDay(c(16)),
             latitude = r.getOrNull(17)?.toDoubleOrNull(), longitude = r.getOrNull(18)?.toDoubleOrNull(),
             photoRef = c(19), linkType = c(20), linkPerson = c(21), linkItemCode = c(22), linkItemName = c(23)
         )
@@ -257,12 +265,26 @@ class MainViewModel(a: Application) : AndroidViewModel(a) {
         }
     }
 
-    suspend fun export(): File = withContext(Dispatchers.IO) {
+    suspend fun export(onlyDate: String? = null): File? = withContext(Dispatchers.IO) {
+        val all = entries.value
+        val list = if (onlyDate == null) all
+                   else all.filter { it.reportDate.ifBlank { it.eventAt.take(10) } == onlyDate }
+        if (list.isEmpty()) {
+            _message.value = "لا توجد سجلات لتصديرها"
+            return@withContext null
+        }
         val dir = File(getApplication<Application>().cacheDir, "exports")
         dir.mkdirs()
-        val stamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmm"))
-        val f = File(dir, "FieldReport_Exchange_$stamp.xlsx")
-        XlsxWriter.write(f, projects.value, roles.value, items.value, entries.value)
+        dir.listFiles()?.filter { System.currentTimeMillis() - it.lastModified() > 86_400_000L }?.forEach { it.delete() }
+        val now = LocalDateTime.now()
+        val stamp = now.format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmm"))
+        val code = _settings.value.projectCode.replace(Regex("[^A-Za-z0-9_-]"), "").ifBlank { "PRJ" }
+        val tag = onlyDate?.replace("-", "") ?: "ALL"
+        val f = File(dir, "FieldReport_${code}_${tag}_$stamp.xlsx")
+        XlsxWriter.write(f, projects.value, roles.value, items.value, list)
+        val nowText = now.format(fmt)
+        prefs.edit().putString("lastExportAt", nowText).apply()
+        _lastExport.value = nowText
         f
     }
 }

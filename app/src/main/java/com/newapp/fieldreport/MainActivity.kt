@@ -65,18 +65,46 @@ fun App(vm: MainViewModel = viewModel()) {
     // screen: home | entry | roles | settings   (back button walks back to "home", then exits)
     var screen by rememberSaveable { mutableStateOf("home") }
     var roleCode by rememberSaveable { mutableStateOf("") }
+    var showExport by rememberSaveable { mutableStateOf(false) }
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     val msg by vm.message.collectAsState()
     val settings by vm.settings.collectAsState()
     val allRoles by vm.roles.collectAsState()
+    val allEntries by vm.entries.collectAsState()
+    val lastExport by vm.lastExport.collectAsState()
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { u ->
         u?.let { vm.importFile(ctx.contentResolver, it) }
     }
-    LaunchedEffect(msg) { if (msg.isNotBlank()) Toast.makeText(ctx, msg, Toast.LENGTH_LONG).show() }
+    LaunchedEffect(msg) {
+        if (msg.isNotBlank()) {
+            Toast.makeText(ctx, msg, Toast.LENGTH_LONG).show()
+            vm.clearMessage()
+        }
+    }
 
     val needSetup = settings.userName.isBlank() || settings.projectCode.isBlank()
+    val pending = allEntries.count { it.eventAt > lastExport }
+    val doExport: (String?) -> Unit = { day ->
+        scope.launch {
+            try { vm.export(day)?.let { share(ctx, it) } }
+            catch (e: Exception) { Toast.makeText(ctx, "تعذر التصدير: ${e.message}", Toast.LENGTH_LONG).show() }
+        }
+    }
     BackHandler(enabled = !needSetup && screen != "home") { screen = "home" }
+
+    if (showExport) AlertDialog(
+        onDismissRequest = { showExport = false },
+        title = { Text("تصدير ملف Excel") },
+        text = { Text("«تقرير اليوم» يصدّر سجلات تاريخ اليوم فقط. «كل السجلات» يصدّر كل ما في هذا الجهاز.") },
+        confirmButton = { TextButton({ showExport = false; doExport(LocalDate.now().toString()) }) { Text("تقرير اليوم") } },
+        dismissButton = {
+            Row {
+                TextButton({ showExport = false; doExport(null) }) { Text("كل السجلات") }
+                TextButton({ showExport = false }) { Text("إلغاء") }
+            }
+        }
+    )
 
     val title = when {
         needSetup -> "الإعداد الأولي"
@@ -96,12 +124,7 @@ fun App(vm: MainViewModel = viewModel()) {
         bottomBar = {
             if (!needSetup) NavigationBar {
                 NavigationBarItem(selected = false, onClick = { picker.launch(arrayOf("*/*")) }, icon = {}, label = { Text("استيراد") })
-                NavigationBarItem(selected = false, onClick = {
-                    scope.launch {
-                        try { share(ctx, vm.export()) }
-                        catch (e: Exception) { Toast.makeText(ctx, "تعذر التصدير: ${e.message}", Toast.LENGTH_LONG).show() }
-                    }
-                }, icon = {}, label = { Text("تصدير") })
+                NavigationBarItem(selected = false, onClick = { showExport = true }, icon = {}, label = { Text("تصدير") })
                 NavigationBarItem(selected = screen == "roles", onClick = { screen = "roles" }, icon = {}, label = { Text("الصفات") })
                 NavigationBarItem(selected = screen == "settings", onClick = { screen = "settings" }, icon = {}, label = { Text("الإعدادات") })
             }
@@ -113,14 +136,14 @@ fun App(vm: MainViewModel = viewModel()) {
             screen == "settings" -> SettingsScreen(settings, false, mod) { s, _ -> vm.saveSettings(s); screen = "home" }
             screen == "roles" -> RolesScreen(vm, mod)
             screen == "entry" && roleCode.isNotBlank() -> EntryScreen(roleCode, vm, mod)
-            else -> HomeScreen(settings, allRoles, mod, onOpen = { roleCode = it; screen = "entry" }, onManage = { screen = "roles" })
+            else -> HomeScreen(settings, allRoles, mod, pending, lastExport, onOpen = { roleCode = it; screen = "entry" }, onManage = { screen = "roles" })
         }
     }
 }
 
 // ---------- home ----------
 @Composable
-fun HomeScreen(s: Settings, allRoles: List<Role>, mod: Modifier, onOpen: (String) -> Unit, onManage: () -> Unit) {
+fun HomeScreen(s: Settings, allRoles: List<Role>, mod: Modifier, pending: Int, lastExport: String, onOpen: (String) -> Unit, onManage: () -> Unit) {
     val mine = allRoles.filter { it.code in s.myRoles }
     LazyColumn(mod.fillMaxSize().padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
@@ -128,6 +151,13 @@ fun HomeScreen(s: Settings, allRoles: List<Role>, mod: Modifier, onOpen: (String
             Text("Field Report", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
             Text(s.userName, fontWeight = FontWeight.Bold)
             Text("المشروع: ${s.projectCode}", style = MaterialTheme.typography.bodySmall)
+            if (pending > 0) {
+                Text(
+                    "سجلات لم تُصدَّر بعد: $pending" + (if (lastExport.isNotBlank()) " — آخر تصدير: $lastExport" else ""),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
         }
         if (mine.isEmpty()) {
             item {
@@ -191,6 +221,10 @@ fun SettingsScreen(s: Settings, firstRun: Boolean, mod: Modifier, onSave: (Setti
                     Text("${r.nameAr}  (${r.code})")
                 }
             }
+        }
+        item {
+            val ver = remember { runCatching { ctx.packageManager.getPackageInfo(ctx.packageName, 0).versionName }.getOrNull().orEmpty() }
+            Text("الإصدار: $ver", style = MaterialTheme.typography.bodySmall)
         }
         item {
             Button({
